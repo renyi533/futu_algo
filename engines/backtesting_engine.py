@@ -33,7 +33,7 @@ warnings.filterwarnings('ignore')
 
 
 class BacktestingEngine:
-    def __init__(self, stock_list: list, start_date: date, end_date: date, observation: int = 100):
+    def __init__(self, stock_list: list, start_date: date, end_date: date, observation: int = 100, intraday: bool = False):
         # Program-Related
         self.config = config
         self.default_logger = logger.get_logger("backtesting")
@@ -49,7 +49,9 @@ class BacktestingEngine:
         self.end_date = end_date
         self.date_range = pd.date_range(self.start_date, self.end_date - timedelta(days=1), freq='d').strftime(
             DATETIME_FORMAT_DW).tolist()
+        #print(self.date_range)
         self.observation = observation
+        self.intraday = intraday
 
         # Transactions-Related
         self.input_data = None
@@ -70,6 +72,8 @@ class BacktestingEngine:
     def process_custom_interval_data(self, stock_code, column_names, custom_interval: int = 5):
         output_dict = {}
         for input_date in self.date_range:
+            #print(input_date)
+            input_date = datetime.strptime(input_date, DATETIME_FORMAT_DW)
             custom_dict = DataProcessingInterface.get_custom_interval_data(target_date=input_date,
                                                                            custom_interval=custom_interval,
                                                                            stock_list=[stock_code])
@@ -126,7 +130,7 @@ class BacktestingEngine:
             # Remove duplicated indices
             ta_backtesting_data[stock_code] = ta_backtesting_data[stock_code][
                 ~ta_backtesting_data[stock_code].index.duplicated(keep='first')]
-        ta_backtesting_data['HK.01997'].to_csv("STEP 2.csv")
+        #ta_backtesting_data['HK.01997'].to_csv("STEP 2.csv")
 
         # Gather all unique dates
         sequence_time = list(unique_time)
@@ -144,6 +148,7 @@ class BacktestingEngine:
             for stock_code in self.stock_list:
                 start_time = sequence_time[index - self.observation]
                 end_time = sequence_time[index]
+                time_in_day = end_time.split()[1]
                 if (start_time not in ta_backtesting_data[stock_code].index) or (
                         end_time not in ta_backtesting_data[stock_code].index):
                     continue
@@ -157,7 +162,7 @@ class BacktestingEngine:
                 row = input_df.iloc[-1]
 
                 if self.strategy.buy(stock_code):
-                    if self.positions.get(stock_code, 0) == 0 and self.capital >= 0:
+                    if self.positions.get(stock_code, 0) == 0 and self.capital >= 0 and (not (self.intraday and time_in_day >= '16:00:00')):
                         self.positions[stock_code] = self.positions.get(stock_code, row['close'])
                         current_price = row['close']
                         lot_size = self.board_lot_mapping.get(stock_code, 0)
@@ -173,7 +178,7 @@ class BacktestingEngine:
                     elif self.positions.get(stock_code, 0) != 0:
                         self.default_logger.info(
                             f"BUY ORDER CANCELLED for {stock_code} because existing holding positions")
-                if self.strategy.sell(stock_code) or index == list(ta_backtesting_data.values())[0].shape[0] - 1:
+                if self.strategy.sell(stock_code) or index >= list(ta_backtesting_data.values())[0].shape[0] -1 - self.observation or (self.intraday and time_in_day >= '16:00:00'):
                     if self.positions.get(stock_code, 0) != 0:
                         current_price = row['close']
                         buy_price = self.positions[stock_code]
@@ -185,6 +190,7 @@ class BacktestingEngine:
                         EBIT = (current_price - buy_price) * qty
                         profit = EBIT - 2 * self.fixed_charge - (
                                 buy_price + current_price) * qty * self.perc_charge / 100 / 2
+                        
                         current_date = datetime.strptime(row['time_key'], '%Y-%m-%d  %H:%M:%S').date()
 
                         self.returns_df.loc[str(current_date), stock_code] += profit

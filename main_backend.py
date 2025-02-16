@@ -108,12 +108,17 @@ def __init_filter(filter_list: list) -> list:
     return [__dynamic_instantiation(prefix="filters", module_name=filter_name) for filter_name in filter_list]
 
 
-def init_backtesting(strategy_name: str):
-    start_date = datetime(2019, 3, 20).date()
-    end_date = datetime(2021, 3, 23).date()
-    stock_list = YahooFinanceInterface.get_top_30_hsi_constituents()
-    bt = BacktestingEngine(stock_list=stock_list, start_date=start_date, end_date=end_date, observation=100)
-    bt.prepare_input_data_file_custom_M(custom_interval=5)
+def init_backtesting(strategy_name: str, t: str, intraday: bool):
+    start_date = datetime(2024, 3, 20).date()
+    end_date = datetime(2025, 2, 10).date()
+    stock_list = ["HK.00700", "HK.09988"]
+    interval_dict = {
+        "K_1M": 1, "K_3M": 3, "K_5M": 5, "K_15M": 15, "K_30M": 30, "K_60M":60, "K_DAY": 330
+    }
+    interval = interval_dict[t]
+    #stock_list = YahooFinanceInterface.get_top_30_hsi_constituents()
+    bt = BacktestingEngine(stock_list=stock_list, start_date=start_date, end_date=end_date, observation=100, intraday=intraday)
+    bt.prepare_input_data_file_custom_M(custom_interval=interval)
     # bt.prepare_input_data_file_1M()
     strategy = __dynamic_instantiation(prefix="strategies", module_name=strategy_name,
                                        optional_parameter=bt.get_backtesting_init_data())
@@ -174,6 +179,7 @@ def main():
                         help="Filter Stock List based on Pre-defined Filters")
     parser.add_argument("-en", "--email_name", type=str, help="Name of the applied stock filtering techniques")
     parser.add_argument("-m", "--market", type=str, choices=['HK', 'CHINA', 'US'], nargs="+", help="Available Market")
+    parser.add_argument("-c", "--trans_category", type=str, choices=['IntraDay', 'InterDay'], help="trans category")
 
     # Evaluate Arguments
     args = parser.parse_args()
@@ -240,7 +246,8 @@ def main():
             init_day_trading(futu_trade, stock_list, args.strategy, stock_strategy_map, sub_type=args.time_interval)
 
     if args.backtesting:
-        init_backtesting(args.backtesting)
+        print(args.trans_category)
+        init_backtesting(args.backtesting, args.time_interval, args.trans_category=='IntraDay')
 
     futu_trade.display_quota()
 
